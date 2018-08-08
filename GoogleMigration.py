@@ -12,21 +12,67 @@ import time
 import mysql.connector
 import json
 
+#pip install mysql-connector-python-rf
+
+
 """
+-- phpMyAdmin SQL Dump
+-- version 4.8.2
+-- https://www.phpmyadmin.net/
+--
+-- Host: localhost:8889
+-- Generation Time: Aug 08, 2018 at 11:37 AM
+-- Server version: 5.7.21
+-- PHP Version: 7.1.19
+
+SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
+SET AUTOCOMMIT = 0;
+START TRANSACTION;
+SET time_zone = "+00:00";
+
+--
+-- Database: `google_docs`
+--
+CREATE DATABASE IF NOT EXISTS `google_docs` DEFAULT CHARACTER SET utf8 COLLATE utf8_general_ci;
+USE `google_docs`;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `documents`
+--
+
 DROP TABLE IF EXISTS `documents`;
 CREATE TABLE IF NOT EXISTS `documents` (
   `row_id` int(11) NOT NULL AUTO_INCREMENT,
   `doc_id` varchar(2500) NOT NULL,
   `title` varchar(500) NOT NULL,
+  `parent_id` varchar(500) NOT NULL,
+  `current_folder_id` varchar(255) NOT NULL,
   `current_folder` varchar(500) NOT NULL,
   `full_path` varchar(2500) NOT NULL,
   `mime` varchar(500) NOT NULL,
+  `export_links` varchar(5000) NOT NULL,
   PRIMARY KEY (`row_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `folders`
+--
+
+DROP TABLE IF EXISTS `folders`;
+CREATE TABLE IF NOT EXISTS `folders` (
+  `row_id` int(11) NOT NULL AUTO_INCREMENT,
+  `folder_id` varchar(1500) NOT NULL,
+  `folder_path` varchar(2500) NOT NULL,
+  PRIMARY KEY (`row_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+COMMIT;
 """
 
 
-#pip install mysql-connector-python-rf
 #If modifying these scopes, delete the file token.json.
 SCOPES = 'https://www.googleapis.com/auth/drive'
 
@@ -52,7 +98,7 @@ def get_folder_name(drive_service, id, folders):
         #print('Parent: %s' % parent)
 
         time.sleep(0.1)
-        
+
         data = drive_service.files().get(fileId=parent.get('id'), fields='id,title').execute()
         #print(data.get('title'))
 
@@ -82,16 +128,16 @@ def download_files(mycursor, drive_service):
             ext = '.jpg'
         if row[3] == 'application/vnd.google-apps.presentation':
             ext = '.pptx'
-            
+
         outfile = row[0] + row[2] + ext
 
         print(row[4])
 
         if not os.path.exists(os.path.dirname(outfile)):
             os.makedirs(os.path.dirname(outfile))
-        
+
         if not os.path.exists(outfile):
-            
+
             if len(download_url):
                 print( "downloading %s" % outfile)
                 resp, content = drive_service._http.request(download_url)
@@ -118,7 +164,7 @@ def build_document_list(mycursor, drive_service):
             parent_id = item['parents'][0]['id']
         else:
             parent_id = 0
-        
+
         exportLink = ""
 
         if 'mimeType' in item and 'application/vnd.google-apps.spreadsheet' in item['mimeType']:
@@ -138,7 +184,7 @@ def build_document_list(mycursor, drive_service):
 
         if len(exportLink) > 0:
             sql = "INSERT INTO documents (doc_id, title, mime, export_links, parent_id) VALUES (%s, %s, %s, %s, %s)"
-            
+
             val = (item.get('id'), item['title'], item['mimeType'], exportLink, parent_id)
             mycursor.execute(sql, val)
 
@@ -159,7 +205,7 @@ def update_folder_paths_for_documents(mycursor, drive_service):
         try:
             parents = drive_service.parents().list(fileId=row[0]).execute()
             for parent in parents['items']:
-                
+
 
                fodlers = get_folder_name(drive_service, parent.get('id'), folders = [])
                fodlers.reverse()
@@ -208,7 +254,7 @@ def get_current_folder(mycursor, drive_service):
     myresult = mycursor.fetchall()
 
     for row in myresult:
-        
+
         data = drive_service.files().get(fileId=row[1], fields='id,title').execute()
 
         sql = "update documents set current_folder = %s where doc_id = %s "
@@ -216,7 +262,7 @@ def get_current_folder(mycursor, drive_service):
         val = (data.get('title'), row[0])
         mycursor.execute(sql, val)
         mydb.commit()
-        
+
 
 if __name__ == '__main__':
 
